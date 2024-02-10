@@ -1,7 +1,7 @@
-import random
 import math
 import time
 import copy
+import secrets
 
 class MCGameTreeNode:
     #need to set the player for the root node
@@ -151,7 +151,7 @@ class MCGameTree:
 
         randMove = None
         while((randMove==None) or (randMove in self.curNode.childMoves)): #Really stupid!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            randMove = self.gamestate.empty[random.randint(0,numMoves - 1)] #just use random choice
+            randMove = self.gamestate.empty[secrets.SystemRandom().randint(0,numMoves - 1)] #just use random choice
         self.down(randMove)
 
     def MCExploreAll(self):
