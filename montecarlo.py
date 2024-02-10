@@ -40,14 +40,13 @@ class MCGameTreeNode:
     #t is the total simulations involving the parent
     def score(self, t):
 
-        lastPlayer = -1*self.player
 
         #IS THIS RIGHT?
  #       if(self.winner != 0):
 #            print("yo")
 #            return lastPlayer * self.winner * float("inf")
         
-        if(lastPlayer == 1): #CHANGED
+        if((lastPlayer := -1*self.player) == 1): #CHANGED
             wins = self.p1Wins
         else:
             wins = self.p2Wins
