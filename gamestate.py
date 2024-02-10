@@ -1,7 +1,7 @@
-import random
 import copy
 import time
 import math
+import secrets
 
 #----------------------------------------- Game Logic -----------------------------------------#
 
@@ -96,7 +96,7 @@ class GameState():
     def playout(self):
         gameCopy = self.copy()
         while(len(gameCopy.empty) != 0 and gameCopy.winner == 0):
-            r = random.randint(0,len(gameCopy.empty)-1)
+            r = secrets.SystemRandom().randint(0,len(gameCopy.empty)-1)
             nextStone = gameCopy.empty[r]
             gameCopy.makeMove(nextStone)
         return gameCopy.winner
@@ -108,7 +108,7 @@ class GameState():
             if(forced != None):
                 nextStone = forced
             else:
-                r = random.randint(0,len(gameCopy.empty)-1)
+                r = secrets.SystemRandom().randint(0,len(gameCopy.empty)-1)
                 nextStone = gameCopy.empty[r]
             gameCopy.makeMove(nextStone)
         return gameCopy.winner
