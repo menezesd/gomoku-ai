@@ -84,8 +84,7 @@ class myPriorityQueue:
         l = heapq.nsmallest(len(pq), pq)
         ret = []
         for entry in l:
-            add = entry[2]
-            if add is not REMOVED:
+            if (add := entry[2]) is not REMOVED:
                 ret.append(add)
         return ret
 

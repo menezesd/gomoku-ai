@@ -38,8 +38,7 @@ class Board(tk.Frame):
         if not self.clickable: return
         
         r,c = self.row_col(event.x,event.y)
-        success = self.tryPlace(r,c)
-        if(success):
+        ifsuccess := self.tryPlace(r,c):
             if self.gamestate.p1Turn:
                 self.player1.makeMove((r,c))
             else:

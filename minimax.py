@@ -118,9 +118,8 @@ class Minimax:
         ##An optimization (play forced moves immediately) ###############
 
         #not quite - if you have a win, take it
-        forced = gamestate.findForced()
         
-        if forced != None:
+        if (forced := gamestate.findForced()) != None:
             gamestate.makeMove(forced)
             #should depth be 0 here
             newMoves = copy.copy(movelist)

@@ -104,8 +104,7 @@ class GameState():
     def hardPlayout(self):
         gameCopy = self.copy()
         while(len(gameCopy.empty) != 0 and gameCopy.winner == 0):
-            forced = gameCopy.findForced()
-            if(forced != None):
+            if((forced := gameCopy.findForced()) != None):
                 nextStone = forced
             else:
                 r = secrets.SystemRandom().randint(0,len(gameCopy.empty)-1)
