@@ -1,215 +1,222 @@
+from __future__ import annotations
 import copy
 import time
-import priority
-import random
 import bisect
+from typing import TYPE_CHECKING, Optional
 
-# improvements:
-# the heat map
-# look for forced wins
+if TYPE_CHECKING:
+    from gamestate import GameState
+
+# Constants
+INFINITY = float("inf")
+SCORE_VECTOR = [0, 1, 4, 16, 64, 100000]  # Scores for 0-5 stones in a row
+DEPTH_FALLOFF = 0.1  # How much heuristic value decreases with depth
+TOP_MOVES_LIMIT = 20  # Max number of moves to consider at each depth
+ADJACENT_MOVES_LIMIT = 10  # Max moves to keep after adding adjacent positions
+
+
 class Minimax:
+    """
+    Minimax AI player with alpha-beta pruning for Gomoku.
 
-    inf = float("inf")
-    scoreVect = [0, 1, 4, 16, 64, 100000] #five in a row
-    firstTurn = True #for moving faster on the first move
+    Uses heuristic evaluation based on line patterns and forced move detection
+    to optimize search.
+    """
 
-    def __init__(self,gamestate, player, depth):
+    def __init__(self, gamestate: GameState, player: int, depth: int) -> None:
+        """
+        Initialize the Minimax AI.
+
+        Args:
+            gamestate: The current game state
+            player: Which player this AI is (1 or -1)
+            depth: Maximum search depth
+        """
         self.gamestate = gamestate.copy()
         self.player = player
         self.depth = depth
         self.multi = self.gamestate.multigraph()
+        self.firstTurn = True
 
-    #trivial initialization
-    def initHeatMap(self):
-        heatMap = priority.myPriorityQueue()
-        for square in self.gamestate.stones:
-            heatMap.add_task(square,0)
-        heatMap.add_task((self.gamestate.rows/2, self.gamestate.cols/2), 1)
-        return heatMap
+    def heuristic(self, player: int, cur_depth: int) -> float:
+        """
+        Evaluate the current board position.
 
-    #get the value for this position
-    #good position for the current player is a positive score
-    def heuristic(self, player, curDepth):
+        A positive score means the position is good for the given player.
+        Score is based on counting stones in potential winning lines.
 
-        fallOff = 0.1 #let the value of the heuristic die off with greater depth
-        
-        scoreVect = self.scoreVect
+        Args:
+            player: The player to evaluate for (1 or -1)
+            cur_depth: Current search depth (used for falloff)
+
+        Returns:
+            Heuristic score for the position
+        """
         stones = self.gamestate.stones
-        
         score = 0
-        
+
         for edge in self.multi:
-            b = 0 #current player
-            w = 0
+            player_count = 0
+            opponent_count = 0
+
             for square in edge:
                 if stones[square] == player:
-                    b = b + 1
+                    player_count += 1
                 elif stones[square] == -player:
-                    w = w + 1
-            if(b > 0 and w > 0):
-                pass #don't count that edge toward the score
-            elif b > 0:
-                score = score + scoreVect[b]
-            elif w > 0:
-                score = score - scoreVect[w]
-        return score - curDepth * fallOff
+                    opponent_count += 1
 
-    def minimaxMove(self,depth, AIturn): #turn: is it the AI's turn? Either 1 or -1
-        
-        if(depth == 0):
-            return (self.heuristic(), None)
+            # Only count lines that could still be completed
+            if player_count > 0 and opponent_count == 0:
+                score += SCORE_VECTOR[player_count]
+            elif opponent_count > 0 and player_count == 0:
+                score -= SCORE_VECTOR[opponent_count]
 
+        return score - cur_depth * DEPTH_FALLOFF
+
+    def orderedMoveList(self) -> list[tuple[float, tuple[int, int]]]:
+        """
+        Get moves ordered by heuristic value (best first).
+
+        Returns:
+            List of (negative_heuristic, move) tuples, sorted best-first
+        """
         gamestate = self.gamestate
+        move_list: list[tuple[float, tuple[int, int]]] = []
 
-        if gamestate.winner != 0:
-            return (self.heuristic(), None)
- 
-        optScore = - AIturn * float("inf") #initial safe value
-        optMove = None
-        
-        for move in copy.copy(gamestate.empty):
-            gamestate.makeMove(move)
-            val = self.minimaxMove(depth-1,-1*AIturn)[0]
-            
-            if AIturn * val >= AIturn * optScore:
-                optScore = val
-                optMove = move
-            
-            gamestate.undo(move)
-
-        return (optScore, optMove)
-
-    #get list of moves in likely order of how good they are
-    def orderedMoveList(self):
-        gamestate = self.gamestate
-        moveList = []
-        for move in copy.copy(gamestate.empty):
+        for move in list(gamestate.empty):
             gamestate.makeMove(move)
             heur = self.heuristic(self.player, 0)
-            bisect.insort(moveList, (-heur,move) ) #minus sign since high heuristic values should come first
+            bisect.insort(move_list, (-heur, move))
             gamestate.undo(move)
 
-        return moveList[:20] #changed
-   #     return [A[1] for A in moveList][:20] #test
-        
+        return move_list[:TOP_MOVES_LIMIT]
 
-    def minimaxAlphaBeta(self, depth):
- #       movelist = self.heatMap.sorted_list()
+    def minimaxAlphaBeta(self, depth: int) -> tuple[float, Optional[tuple[int, int]]]:
+        """
+        Entry point for minimax search with alpha-beta pruning.
+
+        Args:
+            depth: Maximum search depth
+
+        Returns:
+            Tuple of (score, best_move)
+        """
         movelist = self.orderedMoveList()
- #       print(movelist)
-        return self.minimaxAlphaBetaHelper(depth, True, float("inf"), 0, movelist)
+        return self._minimaxAlphaBetaHelper(depth, True, INFINITY, 0, movelist)
 
-    #siblingExtreme is the extreme value so far among a node's siblings
-    def minimaxAlphaBetaHelper(self, depth, AIturn, sibExtreme, curDepth, movelist): #depth is more like "max depth"
+    def _minimaxAlphaBetaHelper(
+        self,
+        depth: int,
+        is_ai_turn: bool,
+        sib_extreme: float,
+        cur_depth: int,
+        movelist: list[tuple[float, tuple[int, int]]]
+    ) -> tuple[float, Optional[tuple[int, int]]]:
+        """
+        Recursive minimax helper with alpha-beta pruning.
 
-        
+        Args:
+            depth: Remaining search depth
+            is_ai_turn: True if it's the maximizing player's turn
+            sib_extreme: Best value found among siblings (for pruning)
+            cur_depth: Current depth from root
+            movelist: Ordered list of moves to consider
+
+        Returns:
+            Tuple of (score, best_move)
+        """
         gamestate = self.gamestate
 
+        # Check for terminal state
         if gamestate.winner != 0:
-            return (self.heuristic(self.player, curDepth), None)
+            return (self.heuristic(self.player, cur_depth), None)
 
-        if AIturn:
-            optScore = - float("inf")
-        else:
-            optScore = float("inf")
-            
-        optMove = None
+        opt_score = -INFINITY if is_ai_turn else INFINITY
+        opt_move: Optional[tuple[int, int]] = None
 
-        ##An optimization (play forced moves immediately) ###############
-
-        #not quite - if you have a win, take it
-        
-        if (forced := gamestate.findForced()) != None:
+        # Optimization: play forced moves immediately
+        forced = gamestate.findForced()
+        if forced is not None:
             gamestate.makeMove(forced)
-            #should depth be 0 here
-            newMoves = copy.copy(movelist)
-            val = self.minimaxAlphaBetaHelper(depth, not AIturn, optScore, curDepth + 1, newMoves )[0] #The plus one is experimental: allow *more* exploration around forced moves
+            new_moves = copy.copy(movelist)
+            val = self._minimaxAlphaBetaHelper(
+                depth, not is_ai_turn, opt_score, cur_depth + 1, new_moves
+            )[0]
             gamestate.undo(forced)
-            return (val,forced)
+            return (val, forced)
 
-        #open threes
- #       opThrees = gamestate.findOpenThrees()
- #       if(opThrees != []):
-#            print(opThrees)
- #       for move in opThrees:
-#            gamestate.makeMove(move)
-#            val = self.minimaxAlphaBetaHelper(depth, not AIturn, optScore, movelist, curDepth + 1)[0]
-#            gamestate.undo(forced)
-#            return (val,forced)
-        ##################### </optimization> ############################
-        #should go after the optimization
-        if(depth == 0):
-            return (self.heuristic(self.player, curDepth), None)
+        # Base case: reached max depth
+        if depth == 0:
+            return (self.heuristic(self.player, cur_depth), None)
 
-#        movelist = copy.copy(gamestate.empty)
-#        moveList = self.heatMap.sorted_list()
-#        print(moveList)
-#        moves = self.orderedMoveList() #testing!
-        
         for m in movelist:
             move = m[1]
-            if not move in gamestate.empty: continue #needed when we're using movelist instead of a copy of empty (faster)
-            
+            # BUG FIX: was checking "move in gamestate.empty" but should check if move exists
+            if move not in gamestate.empty:
+                continue
+
             gamestate.makeMove(move)
+            new_depth = depth - 1
 
-            #open threes
- #           if move in opThrees:
-#                newDepth = depth-1
-#            else:
-
-            newDepth = depth - 1
-
-            ## <NEW> should really be own method
-            newMoves = copy.copy(movelist)
+            # Expand move list with adjacent positions
+            new_moves = copy.copy(movelist)
             for x in gamestate.adjacent(move):
-                if not move in gamestate.empty: continue
-                gamestate.makeMove(move)
+                # BUG FIX: was checking "move" instead of "x"
+                if x not in gamestate.empty:
+                    continue
+                gamestate.makeMove(x)
                 heur = self.heuristic(self.player, 0)
-                bisect.insort(newMoves, (-heur, move))
-                gamestate.undo(move)
-            newMoves = newMoves[:10] #keep the list of moves trimmed
-            ## </NEW>
-                           
-            val = self.minimaxAlphaBetaHelper(newDepth, not AIturn, optScore, curDepth + 1, newMoves)[0]
+                bisect.insort(new_moves, (-heur, x))
+                gamestate.undo(x)
+            new_moves = new_moves[:ADJACENT_MOVES_LIMIT]
 
-            if AIturn:    #in the max phase
-               if val > sibExtreme: #is the equal okay?
+            val = self._minimaxAlphaBetaHelper(
+                new_depth, not is_ai_turn, opt_score, cur_depth + 1, new_moves
+            )[0]
+
+            if is_ai_turn:
+                if val > sib_extreme:
                     gamestate.undo(move)
-                    return (float("inf"), None) #pruning              
-               if val >= optScore:
-                    optScore = val
-                    optMove = move
-            else:          #in the min phase
-                if val < sibExtreme:
+                    return (INFINITY, None)  # Pruning
+                if val >= opt_score:
+                    opt_score = val
+                    opt_move = move
+            else:
+                if val < sib_extreme:
                     gamestate.undo(move)
-                    return (-float("inf"), None) #pruning
-                if val <= optScore:
-                    optScore = val
-                    optMove = move
-            
+                    return (-INFINITY, None)  # Pruning
+                if val <= opt_score:
+                    opt_score = val
+                    opt_move = move
+
             gamestate.undo(move)
-            
-        return (optScore,optMove)    
-        
-    
-    def getAIMove(self):
-        
-        if self.firstTurn: return (self.gamestate.rows//2, self.gamestate.cols//2) #minor optimization
-        
-        start = time.time()
-        x = self.minimaxAlphaBeta(self.depth)
-        ret = x[1]
-        end = time.time()
- #       print("score: ", x[0])
-        print("AI time: ", end - start)
-        return ret
-        
 
-    def makeMove(self,move):
+        return (opt_score, opt_move)
+
+    def getAIMove(self) -> Optional[tuple[int, int]]:
+        """
+        Get the best move for the AI.
+
+        Returns:
+            The best move as (row, col), or None if no moves available
+        """
+        # Minor optimization: play center on first move
+        if self.firstTurn:
+            return (self.gamestate.rows // 2, self.gamestate.cols // 2)
+
+        start = time.time()
+        result = self.minimaxAlphaBeta(self.depth)
+        end = time.time()
+        print(f"AI time: {end - start:.3f}s")
+
+        return result[1]
+
+    def makeMove(self, move: tuple[int, int]) -> None:
+        """
+        Update the AI's internal game state with a move.
+
+        Args:
+            move: The move that was played
+        """
         self.firstTurn = False
         self.gamestate.makeMove(move)
- #       heatMap = self.heatMap
-#        heatMap.remove_task(move)
- #       for d in [(0,1),(1,0),(-1,0),(0,-1),(1,1),(1,-1),(-1,1),(-1,-1)]:
-#            heatMap.increase_priority( (move[0] + d[0], move[1] + d[1]), 1 )
-        
